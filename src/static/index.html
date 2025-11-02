@@ -1,67 +1,225 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Pomodoro Timer</title>
-    <style>
-      body { font-family: sans-serif; max-width: 520px; margin: 32px auto; }
-      .big { font-size: 48px; font-weight: bold; }
-      button { margin: 4px; padding: 8px 12px; }
-    </style>
-  </head>
-  <body>
-    <h1>Pomodoro</h1>
-    <div>
-      <label>Work (min): <input id="work" type="number" value="25" min="1" /></label>
-      <label>Short (min): <input id="short" type="number" value="5" min="1" /></label>
-      <label>Long (min): <input id="long" type="number" value="15" min="1" /></label>
-      <label>Cycle: <input id="cycle" type="number" value="4" min="1" /></label>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pomodoro — Modern UI</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#7c3aed; --muted:#9aa4b2; --good:#10b981;
+      --danger:#ef4444; --glass: rgba(255,255,255,0.03);
+      --w:320px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg,#071023 0%, #071827 60%); color:#e6eef6; display:flex; align-items:center; justify-content:center;
+      min-height:100vh; padding:28px;
+    }
+    .app{width:100%; max-width:920px; display:grid; gap:20px; grid-template-columns: 1fr 360px; align-items:start;}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:18px; box-shadow: 0 6px 30px rgba(2,6,23,0.6);}
+    .left{min-height:360px}
+    h1{margin:0 0 8px 0; font-size:20px}
+    .controls-row{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+    label{font-size:13px; color:var(--muted)}
+    input[type=number]{width:78px; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit}
+    .big-center{display:flex; gap:18px; align-items:center; justify-content:center; flex-direction:column; padding:18px}
+    .time{font-size:48px; font-weight:600; letter-spacing:1px}
+    .stage{font-size:13px; color:var(--muted); text-transform:uppercase; margin-top:6px}
+    .btn{background:var(--accent); color:white; border:0; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600}
+    .btn.secondary{background:transparent; border:1px solid rgba(255,255,255,0.06)}
+    .row{display:flex; gap:8px; align-items:center}
+    .muted{color:var(--muted); font-size:13px}
+    /* progress ring */
+    .ring{width:200px;height:200px; display:grid; place-items:center; position:relative}
+    svg{transform:rotate(-90deg)}
+    .ring .center{position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center}
+    .status{font-size:12px; color:var(--muted)}
+    .small{font-size:12px; color:var(--muted)}
+    footer{grid-column:1/-1; color:var(--muted); font-size:12px; text-align:center}
+    /* responsive */
+    @media (max-width:880px){ .app{grid-template-columns: 1fr; width:100%} .left, .card{padding:14px} .ring{width:160px;height:160px} .time{font-size:38px} }
+    .toast{position:fixed; right:16px; bottom:16px; background:#0b1220; color:#dfe7f5; padding:10px 14px; border-radius:10px; box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    .disabled{opacity:0.45; pointer-events:none}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card left">
+      <h1>Pomodoro Timer</h1>
+      <div class="muted">Modern web UI — works with src.server</div>
+
+      <div style="display:flex; gap:12px; margin-top:16px; align-items:center">
+        <div>
+          <label>Work (min)</label><br>
+          <input id="work" type="number" value="25" min="1" />
+        </div>
+        <div>
+          <label>Short (min)</label><br>
+          <input id="short" type="number" value="5" min="1" />
+        </div>
+        <div>
+          <label>Long (min)</label><br>
+          <input id="long" type="number" value="15" min="1" />
+        </div>
+        <div>
+          <label>Cycle</label><br>
+          <input id="cycle" type="number" value="4" min="1" />
+        </div>
+        <div style="margin-left:auto">
+          <label class="small"><input id="demo" type="checkbox" /> Demo (fast)</label>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:14px; margin-top:20px; align-items:center">
+        <button id="start" class="btn">Start</button>
+        <button id="toggle" class="btn secondary">Pause</button>
+        <button id="skip" class="btn secondary">Skip</button>
+        <button id="stop" class="btn secondary">Stop</button>
+        <div style="margin-left:auto" class="muted">Completed: <span id="done">0</span></div>
+      </div>
+
+      <div style="margin-top:18px" class="muted">Keyboard: pause/resume (P), skip (S)</div>
     </div>
-    <div style="margin-top:18px;">
-      <div id="stage" class="big">IDLE</div>
-      <div id="time" style="font-size:28px;">00:00</div>
-      <div id="done" style="margin-top:8px;">Completed: 0</div>
+
+    <div class="card">
+      <div class="big-center">
+        <div class="ring" aria-hidden="true">
+          <svg width="200" height="200" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.06)" stroke-width="12" fill="none"></circle>
+            <circle id="progress" cx="50" cy="50" r="42" stroke="url(#grad)" stroke-width="12" stroke-linecap="round" fill="none"
+                    stroke-dasharray="263.89" stroke-dashoffset="263.89"></circle>
+            <defs>
+              <linearGradient id="grad" x1="0" x2="1">
+                <stop offset="0%" stop-color="#7c3aed"/>
+                <stop offset="100%" stop-color="#06b6d4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="center">
+            <div class="stage" id="stage">IDLE</div>
+            <div class="time" id="time">00:00</div>
+            <div class="status" id="status">Not running</div>
+          </div>
+        </div>
+
+        <div style="width:100%; margin-top:8px; display:flex; gap:8px; justify-content:space-between; align-items:center">
+          <div class="muted small">Stage info</div>
+          <div id="connection" class="muted small">Connected</div>
+        </div>
+      </div>
     </div>
 
-    <div style="margin-top:12px;">
-      <button id="start">Start</button>
-      <button id="pause">Pause</button>
-      <button id="resume">Resume</button>
-      <button id="skip">Skip</button>
-      <button id="stop">Stop</button>
-    </div>
+    <footer class="muted">Run with: PYTHONPATH=src uvicorn src.server:app --reload --port 8000</footer>
+  </div>
 
-    <script>
-      const $ = id => document.getElementById(id);
-      async function api(path, method='GET', body) {
-        const opts = { method, headers: {} };
-        if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-        const res = await fetch(path, opts);
-        return res.json();
-      }
+  <div id="toast" class="toast" style="display:none"></div>
 
-      function formatTime(s){ s = Math.max(0, Math.floor(s)); const m = Math.floor(s/60); const sec = s%60; return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`; }
+  <script>
+    const $ = id => document.getElementById(id);
+    const api = async (path, method='GET', body=null) => {
+      const opts = { method, headers: {} };
+      if (body) { opts.headers['Content-Type']='application/json'; opts.body = JSON.stringify(body); }
+      const res = await fetch(path, opts);
+      if (!res.ok) throw new Error('Network');
+      return res.json();
+    };
 
-      async function refresh(){
+    function formatTime(s){
+      s = Math.max(0, Math.floor(s));
+      const m = Math.floor(s/60); const sec = s%60;
+      return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    function setProgress(percent){
+      // circumference = 2πr, here r=42 => ~263.89
+      const circ = 2*Math.PI*42;
+      const offset = circ * (1 - Math.max(0, Math.min(1, percent)));
+      $('progress').style.strokeDashoffset = offset;
+    }
+
+    function toast(msg, ms=2000){
+      const t = $('toast'); t.textContent = msg; t.style.display='block';
+      clearTimeout(t._to); t._to = setTimeout(()=> t.style.display='none', ms);
+    }
+
+    let lastState = null;
+    let polling = null;
+    let backoff = 1000;
+
+    async function refresh(){
+      try{
         const state = await api('/state');
-        $('stage').textContent = state.stage;
-        $('time').textContent = formatTime(state.remaining);
-        $('done').textContent = 'Completed: ' + state.pomodoros_completed;
+        lastState = state;
+        updateUI(state);
+        $('connection').textContent='Connected';
+        backoff = 1000;
+      }catch(e){
+        $('connection').textContent='Disconnected — retrying';
+        // exponential backoff
+        backoff = Math.min(10000, backoff*1.5);
+        clearInterval(polling);
+        polling = setInterval(refresh, backoff);
       }
+    }
 
-      $('start').onclick = async () => {
-        const payload = { work_min: Number($('work').value), short_min: Number($('short').value), long_min: Number($('long').value), pomos_per_cycle: Number($('cycle').value) };
-        await api('/start','POST', payload);
-        await refresh();
+    function updateUI(state){
+      $('stage').textContent = state.stage.replace('_',' ');
+      $('time').textContent = formatTime(state.remaining);
+      $('done').textContent = state.pomodoros_completed;
+      $('status').textContent = state.running ? (state.paused ? 'Paused' : 'Running') : 'Not running';
+
+      // progress: show fraction of current stage
+      const total = (state.stage === 'WORK' ? state.work_min : state.stage === 'LONG_BREAK' ? state.long_min : state.short_min) * 60;
+      const pct = total > 0 ? (total - state.remaining) / total : 0;
+      setProgress(pct);
+
+      // button states
+      const running = state.running;
+      $('start').classList.toggle('disabled', running);
+      $('toggle').classList.toggle('disabled', !running);
+      $('skip').classList.toggle('disabled', !running);
+      $('stop').classList.toggle('disabled', !running);
+
+      $('toggle').textContent = state.paused ? 'Resume' : 'Pause';
+    }
+
+    // events
+    $('start').onclick = async () => {
+      const demo = $('demo').checked;
+      const body = {
+        work_min: Number($('work').value) * (demo ? 1/60 : 1),
+        short_min: Number($('short').value) * (demo ? 1/60 : 1),
+        long_min: Number($('long').value) * (demo ? 1/60 : 1),
+        pomos_per_cycle: Number($('cycle').value)
       };
-      $('pause').onclick = async () => { await api('/pause','POST'); await refresh(); };
-      $('resume').onclick = async () => { await api('/resume','POST'); await refresh(); };
-      $('skip').onclick = async () => { await api('/skip','POST'); await refresh(); };
-      $('stop').onclick = async () => { await api('/stop','POST'); await refresh(); };
+      // ensure ints (server multiplies by 60 internally)
+      // if demo, sending fractions yields zero minutes on server; instead send small ints for demo:
+      if (demo){
+        body.work_min = Math.max(1, Math.floor(Number($('work').value) ? 1 : 1));
+        body.short_min = Math.max(1, Math.floor(Number($('short').value) ? 1 : 1));
+        body.long_min = Math.max(1, Math.floor(Number($('long').value) ? 1 : 1));
+      }
+      try{ await api('/start','POST', body); toast('Started'); await refresh(); }catch(e){ toast('Start failed'); }
+    };
+    $('toggle').onclick = async () => {
+      try{
+        const state = lastState && lastState.paused ? await api('/resume','POST') : await api('/pause','POST');
+        updateUI(state); toast(state.paused ? 'Paused' : 'Resumed');
+      }catch(e){ toast('Failed'); }
+    };
+    $('skip').onclick = async ()=> { try{ await api('/skip','POST'); toast('Skipped'); await refresh(); }catch(e){ toast('Skip failed'); } };
+    $('stop').onclick = async ()=> { try{ await api('/stop','POST'); toast('Stopped'); await refresh(); }catch(e){ toast('Stop failed'); } };
 
-      // poll state periodically
-      setInterval(refresh, 1000);
-      refresh();
-    </script>
-  </body>
+    // keyboard shortcuts
+    document.addEventListener('keydown', (ev)=>{
+      if (ev.key.toLowerCase()==='p'){ $('toggle').click(); ev.preventDefault(); }
+      if (ev.key.toLowerCase()==='s'){ $('skip').click(); ev.preventDefault(); }
+    });
+
+    // start polling
+    polling = setInterval(refresh, 1000);
+    refresh();
+  </script>
+</body>
 </html>

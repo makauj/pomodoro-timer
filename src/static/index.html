@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Pomodoro Timer</title>
+    <style>
+      body { font-family: sans-serif; max-width: 520px; margin: 32px auto; }
+      .big { font-size: 48px; font-weight: bold; }
+      button { margin: 4px; padding: 8px 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Pomodoro</h1>
+    <div>
+      <label>Work (min): <input id="work" type="number" value="25" min="1" /></label>
+      <label>Short (min): <input id="short" type="number" value="5" min="1" /></label>
+      <label>Long (min): <input id="long" type="number" value="15" min="1" /></label>
+      <label>Cycle: <input id="cycle" type="number" value="4" min="1" /></label>
+    </div>
+    <div style="margin-top:18px;">
+      <div id="stage" class="big">IDLE</div>
+      <div id="time" style="font-size:28px;">00:00</div>
+      <div id="done" style="margin-top:8px;">Completed: 0</div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <button id="start">Start</button>
+      <button id="pause">Pause</button>
+      <button id="resume">Resume</button>
+      <button id="skip">Skip</button>
+      <button id="stop">Stop</button>
+    </div>
+
+    <script>
+      const $ = id => document.getElementById(id);
+      async function api(path, method='GET', body) {
+        const opts = { method, headers: {} };
+        if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+        const res = await fetch(path, opts);
+        return res.json();
+      }
+
+      function formatTime(s){ s = Math.max(0, Math.floor(s)); const m = Math.floor(s/60); const sec = s%60; return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`; }
+
+      async function refresh(){
+        const state = await api('/state');
+        $('stage').textContent = state.stage;
+        $('time').textContent = formatTime(state.remaining);
+        $('done').textContent = 'Completed: ' + state.pomodoros_completed;
+      }
+
+      $('start').onclick = async () => {
+        const payload = { work_min: Number($('work').value), short_min: Number($('short').value), long_min: Number($('long').value), pomos_per_cycle: Number($('cycle').value) };
+        await api('/start','POST', payload);
+        await refresh();
+      };
+      $('pause').onclick = async () => { await api('/pause','POST'); await refresh(); };
+      $('resume').onclick = async () => { await api('/resume','POST'); await refresh(); };
+      $('skip').onclick = async () => { await api('/skip','POST'); await refresh(); };
+      $('stop').onclick = async () => { await api('/stop','POST'); await refresh(); };
+
+      // poll state periodically
+      setInterval(refresh, 1000);
+      refresh();
+    </script>
+  </body>
+</html>

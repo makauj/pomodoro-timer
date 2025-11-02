@@ -95,43 +95,75 @@ def run_pomodoro(
     clear_fn: Callable[[], None] = clear_console,
     print_fn: Callable[..., None] = print,
 ) -> None:
-    pomodoros_completed = 0
-    notifier = Notifier()
-    audio = Audio()
+    """Run the timer using the new Timer class (start/pause/skip/stop).
+
+    This function wraps src.timer.Timer and exposes the same CLI-style
+    behavior (periodic console updates + keyboard controls).
+    """
+    # local import to avoid circular/top-level dependency issues in tests
+    from timer import Timer
+
     controls = KeyboardControls()
+    timer = Timer(audio=Audio(), notifier=Notifier(), sleep_fn=sleep_fn)
+
+    # convert seconds -> minutes for Timer.start()
+    work_min = max(0, work_sec // 60)
+    short_min = max(0, short_sec // 60)
+    long_min = max(0, long_sec // 60)
+    pomodoros_per_cycle = max(1, int(pomodoros_per_cycle))
+    max_pomos = int(max_pomodoros) if max_pomodoros else None
 
     clear_fn()
-    print_fn("Welcome to the Python Pomodoro Timer!")
-    print_fn(f"Work: {work_sec // 60}m | Short Break: {short_sec // 60}m | Long Break: {long_sec // 60}m\n")
-    print_fn("Press Ctrl+C to stop the timer at any time.")
+    print_fn("Welcome to the Python Pomodoro Timer (wrapped Timer)!")
+    print_fn(f"Work: {work_min}m | Short Break: {short_min}m | Long Break: {long_min}m | Cycle: {pomodoros_per_cycle}\n")
+    print_fn("Controls: 'p' pause/resume | 's' skip | Ctrl+C to quit\n")
+
+    # start listening for keyboard controls (idempotent)
+    controls.listen_for_input()
 
     try:
+        timer.start(work_min, short_min, long_min, pomodoros_per_cycle)
+
         while True:
-            countdown_timer(
-                work_sec,
-                "WORK",
-                pomodoros_completed,
-                notifier=notifier,
-                audio=audio,
-                controls=controls,
-                sleep_fn=sleep_fn,
-                clear_fn=clear_fn,
-                print_fn=print_fn,
-            )
+            state = timer.get_state()
+            mins, secs = divmod(state["remaining"], 60)
+            line = f"[{state['stage']}] {mins:02d}:{secs:02d} | Completed: {state['pomodoros_completed']}"
+            # update console line
+            print_fn(f"\r{line}\033[K", end="", flush=True)
 
-            pomodoros_completed += 1
+            # react to keyboard controls
+            if controls.check_skip():
+                timer.skip()
 
-            if max_pomodoros and pomodoros_completed >= max_pomodoros:
-                print_fn(f"Reached target of {max_pomodoros} pomodoros. Good job!")
+            # sync pause state from controls -> timer
+            if controls.is_paused and not state["paused"]:
+                timer.pause()
+            elif not controls.is_paused and state["paused"]:
+                timer.resume()
+
+            # stop when requested by max pomodoros
+            if max_pomos is not None and state["pomodoros_completed"] >= max_pomos:
+                print_fn("\nReached configured maximum pomodoros. Stopping timer.")
+                timer.stop()
                 break
 
-            if pomodoros_completed % pomodoros_per_cycle == 0:
-                countdown_timer(long_sec, "LONG BREAK", pomodoros_completed, notifier=notifier, audio=audio, controls=controls, sleep_fn=sleep_fn, clear_fn=clear_fn, print_fn=print_fn)
-            else:
-                countdown_timer(short_sec, "SHORT BREAK", pomodoros_completed, notifier=notifier, audio=audio, controls=controls, sleep_fn=sleep_fn, clear_fn=clear_fn, print_fn=print_fn)
+            # exit loop if timer stopped for any other reason
+            if not state["running"]:
+                print_fn("\nTimer stopped.")
+                break
 
+            sleep_fn(1.0)
     except KeyboardInterrupt:
-        print_fn("\nTimer interrupted by user. Exiting gracefully.")
+        print_fn("\nInterrupted by user; stopping timer...")
+        timer.stop()
+    finally:
+        try:
+            controls.stop()
+        except Exception:
+            pass
+
+    clear_fn()
+    print_fn("Goodbye!")
 
 
 def parse_args() -> argparse.Namespace:

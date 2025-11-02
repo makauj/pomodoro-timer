@@ -1,6 +1,7 @@
 import os
 import platform
 import shlex
+import subprocess
 from typing import Optional
 
 # Try to import winsound only on Windows
@@ -16,22 +17,33 @@ def _has_cmd(cmd: str) -> bool:
     from shutil import which
     return which(cmd) is not None
 
+def _spawn_cmd(cmd_list):
+    try:
+        subprocess.Popen(cmd_list, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+    except Exception:
+        # best-effort fallback to printing bell
+        try:
+            print("\a", end="", flush=True)
+        except Exception:
+            pass
+
 def play_sound(sound_file: str) -> None:
     """Plays a sound file if possible; falls back to system bell."""
     system = platform.system()
     if system == "Windows" and winsound:
         try:
+            # winsound.PlaySound is async when SND_ASYNC specified
             winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except Exception:
             pass
     elif system == "Linux" and _has_cmd("aplay"):
         try:
-            os.system(f"aplay {shlex.quote(sound_file)} >/dev/null 2>&1 &")
+            _spawn_cmd(["aplay", sound_file])
         except Exception:
             pass
     elif system == "Darwin" and _has_cmd("afplay"):
         try:
-            os.system(f"afplay {shlex.quote(sound_file)} >/dev/null 2>&1 &")
+            _spawn_cmd(["afplay", sound_file])
         except Exception:
             pass
     else:

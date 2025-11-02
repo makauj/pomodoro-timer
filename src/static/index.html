@@ -8,19 +8,23 @@
     :root{
       --bg:#0f1724; --card:#0b1220; --accent:#7c3aed; --muted:#9aa4b2; --good:#10b981;
       --danger:#ef4444; --glass: rgba(255,255,255,0.03);
-      --w:320px;
+    }
+    /* Light theme */
+    :root.light {
+      --bg: #f6f7fb; --card:#ffffff; --accent:#6d28d9; --muted:#556170; --good:#059669; --danger:#dc2626;
+      color-scheme: light;
     }
     *{box-sizing:border-box}
     body{
       margin:0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      background: linear-gradient(180deg,#071023 0%, #071827 60%); color:#e6eef6; display:flex; align-items:center; justify-content:center;
+      background: linear-gradient(180deg, var(--bg), #071827 60%); color: #e6eef6; display:flex; align-items:center; justify-content:center;
       min-height:100vh; padding:28px;
     }
+    .light body{ color: #0b1220; }
     .app{width:100%; max-width:920px; display:grid; gap:20px; grid-template-columns: 1fr 360px; align-items:start;}
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:18px; box-shadow: 0 6px 30px rgba(2,6,23,0.6);}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:18px; box-shadow: 0 6px 30px rgba(2,6,23,0.12);}
     .left{min-height:360px}
     h1{margin:0 0 8px 0; font-size:20px}
-    .controls-row{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
     label{font-size:13px; color:var(--muted)}
     input[type=number]{width:78px; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit}
     .big-center{display:flex; gap:18px; align-items:center; justify-content:center; flex-direction:column; padding:18px}
@@ -28,19 +32,19 @@
     .stage{font-size:13px; color:var(--muted); text-transform:uppercase; margin-top:6px}
     .btn{background:var(--accent); color:white; border:0; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600}
     .btn.secondary{background:transparent; border:1px solid rgba(255,255,255,0.06)}
-    .row{display:flex; gap:8px; align-items:center}
     .muted{color:var(--muted); font-size:13px}
-    /* progress ring */
     .ring{width:200px;height:200px; display:grid; place-items:center; position:relative}
     svg{transform:rotate(-90deg)}
     .ring .center{position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center}
     .status{font-size:12px; color:var(--muted)}
     .small{font-size:12px; color:var(--muted)}
     footer{grid-column:1/-1; color:var(--muted); font-size:12px; text-align:center}
-    /* responsive */
     @media (max-width:880px){ .app{grid-template-columns: 1fr; width:100%} .left, .card{padding:14px} .ring{width:160px;height:160px} .time{font-size:38px} }
     .toast{position:fixed; right:16px; bottom:16px; background:#0b1220; color:#dfe7f5; padding:10px 14px; border-radius:10px; box-shadow:0 6px 30px rgba(2,6,23,0.6)}
     .disabled{opacity:0.45; pointer-events:none}
+    .top-row{display:flex; gap:12px; align-items:center; margin-top:16px}
+    .auth-row{margin-left:auto; display:flex; gap:8px; align-items:center}
+    .theme-toggle{border-radius:8px; padding:6px 8px; background:transparent; border:1px solid rgba(255,255,255,0.04); cursor:pointer}
   </style>
 </head>
 <body>
@@ -49,7 +53,7 @@
       <h1>Pomodoro Timer</h1>
       <div class="muted">Modern web UI — works with src.server</div>
 
-      <div style="display:flex; gap:12px; margin-top:16px; align-items:center">
+      <div class="top-row">
         <div>
           <label>Work (min)</label><br>
           <input id="work" type="number" value="25" min="1" />
@@ -66,8 +70,12 @@
           <label>Cycle</label><br>
           <input id="cycle" type="number" value="4" min="1" />
         </div>
-        <div style="margin-left:auto">
-          <label class="small"><input id="demo" type="checkbox" /> Demo (fast)</label>
+
+        <div class="auth-row">
+          <label class="small"><input id="demo" type="checkbox" /> Demo</label>
+          <input id="api_key" type="password" placeholder="API Key" style="width:160px;padding:6px;border-radius:8px" />
+          <button id="save_key" class="btn secondary">Save</button>
+          <button id="theme" class="theme-toggle">Theme</button>
         </div>
       </div>
 
@@ -105,7 +113,7 @@
 
         <div style="width:100%; margin-top:8px; display:flex; gap:8px; justify-content:space-between; align-items:center">
           <div class="muted small">Stage info</div>
-          <div id="connection" class="muted small">Connected</div>
+          <div id="connection" class="muted small">Connecting...</div>
         </div>
       </div>
     </div>
@@ -117,99 +125,152 @@
 
   <script>
     const $ = id => document.getElementById(id);
-    const api = async (path, method='GET', body=null) => {
-      const opts = { method, headers: {} };
-      if (body) { opts.headers['Content-Type']='application/json'; opts.body = JSON.stringify(body); }
-      const res = await fetch(path, opts);
-      if (!res.ok) throw new Error('Network');
-      return res.json();
+    // localStorage keys
+    const LS = {
+      work: 'pom_work', short: 'pom_short', long: 'pom_long', cycle: 'pom_cycle',
+      demo: 'pom_demo', theme: 'pom_theme', apiKey: 'pom_api_key'
     };
+
+    // load settings from localStorage
+    function loadSettings(){
+      if(localStorage[LS.work]) $('work').value = localStorage[LS.work];
+      if(localStorage[LS.short]) $('short').value = localStorage[LS.short];
+      if(localStorage[LS.long]) $('long').value = localStorage[LS.long];
+      if(localStorage[LS.cycle]) $('cycle').value = localStorage[LS.cycle];
+      if(localStorage[LS.demo]) $('demo').checked = localStorage[LS.demo] === '1';
+      if(localStorage[LS.apiKey]) $('api_key').value = localStorage[LS.apiKey];
+      const theme = localStorage[LS.theme] || 'dark';
+      applyTheme(theme);
+    }
+    function saveSettings(){
+      localStorage[LS.work] = $('work').value;
+      localStorage[LS.short] = $('short').value;
+      localStorage[LS.long] = $('long').value;
+      localStorage[LS.cycle] = $('cycle').value;
+      localStorage[LS.demo] = $('demo').checked ? '1' : '0';
+    }
+    function applyTheme(theme){
+      if(theme === 'light') document.documentElement.classList.add('light');
+      else document.documentElement.classList.remove('light');
+      localStorage[LS.theme] = theme;
+    }
+
+    // API helpers include API key header when available
+    function getApiKey(){ return $('api_key').value || localStorage[LS.apiKey] || ''; }
+    async function api(path, method='GET', body=null){
+      const opts = { method, headers: {} };
+      const key = getApiKey();
+      if(key) opts.headers['x-api-key'] = key;
+      if(body){ opts.headers['Content-Type']='application/json'; opts.body = JSON.stringify(body); }
+      const res = await fetch(path, opts);
+      if(!res.ok){
+        throw new Error('Network');
+      }
+      return res.json();
+    }
 
     function formatTime(s){
       s = Math.max(0, Math.floor(s));
       const m = Math.floor(s/60); const sec = s%60;
       return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
     }
-
     function setProgress(percent){
-      // circumference = 2πr, here r=42 => ~263.89
       const circ = 2*Math.PI*42;
       const offset = circ * (1 - Math.max(0, Math.min(1, percent)));
       $('progress').style.strokeDashoffset = offset;
     }
-
     function toast(msg, ms=2000){
       const t = $('toast'); t.textContent = msg; t.style.display='block';
       clearTimeout(t._to); t._to = setTimeout(()=> t.style.display='none', ms);
     }
 
-    let lastState = null;
-    let polling = null;
-    let backoff = 1000;
-
-    async function refresh(){
-      try{
-        const state = await api('/state');
-        lastState = state;
-        updateUI(state);
-        $('connection').textContent='Connected';
-        backoff = 1000;
-      }catch(e){
-        $('connection').textContent='Disconnected — retrying';
-        // exponential backoff
-        backoff = Math.min(10000, backoff*1.5);
-        clearInterval(polling);
-        polling = setInterval(refresh, backoff);
-      }
-    }
-
+    // UI update from state object
     function updateUI(state){
       $('stage').textContent = state.stage.replace('_',' ');
       $('time').textContent = formatTime(state.remaining);
       $('done').textContent = state.pomodoros_completed;
       $('status').textContent = state.running ? (state.paused ? 'Paused' : 'Running') : 'Not running';
 
-      // progress: show fraction of current stage
       const total = (state.stage === 'WORK' ? state.work_min : state.stage === 'LONG_BREAK' ? state.long_min : state.short_min) * 60;
       const pct = total > 0 ? (total - state.remaining) / total : 0;
       setProgress(pct);
 
-      // button states
       const running = state.running;
       $('start').classList.toggle('disabled', running);
       $('toggle').classList.toggle('disabled', !running);
       $('skip').classList.toggle('disabled', !running);
       $('stop').classList.toggle('disabled', !running);
-
       $('toggle').textContent = state.paused ? 'Resume' : 'Pause';
     }
 
-    // events
-    $('start').onclick = async () => {
-      const demo = $('demo').checked;
-      const body = {
-        work_min: Number($('work').value) * (demo ? 1/60 : 1),
-        short_min: Number($('short').value) * (demo ? 1/60 : 1),
-        long_min: Number($('long').value) * (demo ? 1/60 : 1),
-        pomos_per_cycle: Number($('cycle').value)
+    // EventSource for real-time updates with reconnection/backoff
+    let es = null;
+    let esRetry = 1000;
+    function startEventSource(){
+      const key = getApiKey();
+      const url = '/events' + (key ? '?api_key=' + encodeURIComponent(key) : '');
+      if(es) try{ es.close(); }catch(e){}
+      es = new EventSource(url);
+      $('connection').textContent = 'Connected (SSE)';
+      es.addEventListener('state', (ev) => {
+        try{
+          const state = JSON.parse(ev.data);
+          updateUI(state);
+          esRetry = 1000;
+        }catch(e){}
+      });
+      es.onerror = (e) => {
+        $('connection').textContent = 'Disconnected — retrying';
+        try{ es.close(); }catch(e){}
+        setTimeout(() => {
+          esRetry = Math.min(10000, Math.floor(esRetry * 1.5));
+          startEventSource();
+        }, esRetry);
       };
-      // ensure ints (server multiplies by 60 internally)
-      // if demo, sending fractions yields zero minutes on server; instead send small ints for demo:
-      if (demo){
-        body.work_min = Math.max(1, Math.floor(Number($('work').value) ? 1 : 1));
-        body.short_min = Math.max(1, Math.floor(Number($('short').value) ? 1 : 1));
-        body.long_min = Math.max(1, Math.floor(Number($('long').value) ? 1 : 1));
+    }
+
+    // Button handlers
+    $('start').onclick = async () => {
+      saveSettings();
+      const demo = $('demo').checked;
+      let work = Number($('work').value), short = Number($('short').value), long = Number($('long').value);
+      if(demo){
+        // when demo is checked, use small integers to speed tests (1 minute -> 1 minute but you can set shorter on server)
+        work = Math.max(1, work);
+        short = Math.max(1, short);
+        long = Math.max(1, long);
       }
-      try{ await api('/start','POST', body); toast('Started'); await refresh(); }catch(e){ toast('Start failed'); }
+      const body = { work_min: work, short_min: short, long_min: long, pomos_per_cycle: Number($('cycle').value) };
+      try{ await api('/start','POST', body); toast('Started'); }catch(e){ toast('Start failed'); }
     };
     $('toggle').onclick = async () => {
       try{
-        const state = lastState && lastState.paused ? await api('/resume','POST') : await api('/pause','POST');
-        updateUI(state); toast(state.paused ? 'Paused' : 'Resumed');
+        // toggle by checking current UI paused state (best-effort)
+        const paused = $('toggle').textContent === 'Resume';
+        const path = paused ? '/resume' : '/pause';
+        const state = await api(path,'POST');
+        updateUI(state);
+        toast(state.paused ? 'Paused' : 'Resumed');
       }catch(e){ toast('Failed'); }
     };
-    $('skip').onclick = async ()=> { try{ await api('/skip','POST'); toast('Skipped'); await refresh(); }catch(e){ toast('Skip failed'); } };
-    $('stop').onclick = async ()=> { try{ await api('/stop','POST'); toast('Stopped'); await refresh(); }catch(e){ toast('Stop failed'); } };
+    $('skip').onclick = async ()=> { try{ await api('/skip','POST'); toast('Skipped'); }catch(e){ toast('Skip failed'); } };
+    $('stop').onclick = async ()=> { try{ await api('/stop','POST'); toast('Stopped'); }catch(e){ toast('Stop failed'); } };
+
+    // save API key and start SSE with it
+    $('save_key').onclick = () => {
+      const key = $('api_key').value.trim();
+      if(key) localStorage[LS.apiKey] = key;
+      else localStorage.removeItem(LS.apiKey);
+      toast('API key saved');
+      startEventSource();
+    };
+
+    // theme toggle
+    $('theme').onclick = () => {
+      const cur = localStorage[LS.theme] || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+    };
 
     // keyboard shortcuts
     document.addEventListener('keydown', (ev)=>{
@@ -217,9 +278,16 @@
       if (ev.key.toLowerCase()==='s'){ $('skip').click(); ev.preventDefault(); }
     });
 
-    // start polling
-    polling = setInterval(refresh, 1000);
-    refresh();
+    // init
+    loadSettings();
+    // if api key present, start SSE with it
+    if(getApiKey()) startEventSource();
+    else {
+      // try SSE without key (server may not require it)
+      startEventSource();
+    }
+    // fallback: fetch initial state once
+    (async()=>{ try{ const s = await api('/state'); updateUI(s); $('connection').textContent='Connected'; }catch(e){ $('connection').textContent='Waiting for SSE...'; } })();
   </script>
 </body>
 </html>

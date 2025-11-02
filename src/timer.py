@@ -32,8 +32,10 @@ class Timer:
         self._long_sec = 15 * 60
         self._pomos_per_cycle = 4
 
-        # skip flag
+        # skip flag + throttle to avoid rapid repeated skips
         self._skip_requested = False
+        self._last_skip_at = 0.0
+        self._skip_cooldown = 0.25  # seconds
 
     def start(self, work_min: int = 25, short_min: int = 5, long_min: int = 15, pomos_per_cycle: int = 4) -> None:
         with self._lock:
@@ -47,6 +49,7 @@ class Timer:
             self.pomodoros_completed = 0
             self._stop_requested = False
             self._skip_requested = False
+            self._last_skip_at = 0.0
             self.stage = "WORK"
             self.remaining = self._work_sec
             self.running = True
@@ -81,17 +84,31 @@ class Timer:
         with self._lock:
             if not self.running:
                 return
+            now = time.time()
+            if now - self._last_skip_at < self._skip_cooldown:
+                # ignore spurious/rapid skips
+                return
+            self._last_skip_at = now
             self._skip_requested = True
 
     def stop(self) -> None:
         with self._lock:
             if not self.running:
+                # ensure state is idle
+                self.running = False
+                self.paused = False
+                self.stage = "IDLE"
+                self.remaining = 0
                 return
             self._stop_requested = True
             self.running = False
             self.paused = False
+        # thread is daemon; join best-effort but don't block forever
         if self._thread:
-            self._thread.join(timeout=1.0)
+            try:
+                self._thread.join(timeout=1.0)
+            except Exception:
+                pass
         with self._lock:
             self.stage = "IDLE"
             self.remaining = 0
@@ -105,14 +122,14 @@ class Timer:
                     if self.paused:
                         pass
                     elif self._skip_requested:
-                        # consume skip
+                        # consume skip and mark stage end by setting remaining to 0
                         self._skip_requested = False
                         self.remaining = 0
                     elif self.remaining <= 0:
                         # end of stage
                         self._on_stage_end()
                     else:
-                        # will decrement below
+                        # normal countdown
                         pass
 
                     running = self.running
@@ -130,7 +147,9 @@ class Timer:
                     self.sleep_fn(1.0)
                     with self._lock:
                         # decrement safely
-                        self.remaining = max(0, self.remaining - 1)
+                        # guard double-check in case skip/end changed remaining
+                        if self.remaining > 0:
+                            self.remaining = max(0, self.remaining - 1)
                 else:
                     # small sleep so loop doesn't spin tight after stage end
                     self.sleep_fn(0.1)
@@ -139,12 +158,7 @@ class Timer:
             with self._lock:
                 self.running = False
                 # do not reset stage/remaining here so clients can inspect final state
-
-            try:
-                # ensure a finishing sound/notify has been played when stopping externally
-                pass
-            except Exception:
-                pass
+            # best-effort cleanup: no blocking I/O here
 
     def _on_stage_end(self) -> None:
         # Called while holding lock context in caller; adjust carefully
@@ -171,7 +185,7 @@ class Timer:
             self.stage = next_stage
             self.remaining = next_duration
 
-        # perform I/O without holding lock
+        # perform I/O without holding lock (must be non-blocking / robust)
         try:
             self.notifier.notify(f"{finished_stage} finished; next: {self.stage}")
         except Exception:

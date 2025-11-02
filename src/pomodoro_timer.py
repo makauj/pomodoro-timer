@@ -35,29 +35,44 @@ def countdown_timer(
         duration = 0
 
     print_fn(f"--- Pomodoro Timer --- | Completed Pomodoros: {pomodoro_count}")
+    print_fn("(Press 'p' to pause, 's' to skip, 'q' to quit)\n")
 
-    timer_thread = threading.Thread(target=controls.listen_for_input)
-    timer_thread.start()
+    # Start the controls listener via the controls API (idempotent)
+    controls.listen_for_input()
 
-    while duration >= 0:
-        mins, secs = divmod(duration, 60)
-        time_format = f"{mins:02d}:{secs:02d}"
+    try:
+        while duration >= 0:
+            # Check for skip request
+            if controls.check_skip():
+                clear_fn()
+                print_fn(f"\n[SKIPPED] {stage_name} skipped!\n")
+                break
 
-        msg = f"[{stage_name}] Time Remaining: {time_format}"
-        print_fn(f"\r{msg}\033[K", end='', flush=True)
+            mins, secs = divmod(duration, 60)
+            time_format = f"{mins:02d}:{secs:02d}"
 
-        if controls.is_paused:
-            time.sleep(1)
-            continue
+            msg = f"[{stage_name}] Time Remaining: {time_format}"
+            print_fn(f"\r{msg}\033[K", end='', flush=True)
 
+            if controls.is_paused:
+                print_fn(f"\r{msg} [PAUSED]\033[K", end='', flush=True)
+                sleep_fn(0.5)
+                continue
+
+            try:
+                sleep_fn(1)
+            except KeyboardInterrupt:
+                clear_fn()
+                print_fn("\nTimer stopped by user. Goodbye!")
+                raise
+
+            duration -= 1
+    finally:
+        # Ensure the background listener is requested to stop in all cases
         try:
-            sleep_fn(1)
-        except KeyboardInterrupt:
-            clear_fn()
-            print_fn("\nTimer stopped by user. Goodbye!")
-            raise
-
-        duration -= 1
+            controls.stop()
+        except Exception:
+            pass
 
     clear_fn()
     notifier.notify(f"{stage_name} is over!")

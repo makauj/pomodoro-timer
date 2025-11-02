@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "pomodoro-timer"
+version = "0.1.0"
+description = "A simple terminal Pomodoro timer with keyboard controls, notifications, and sound features."
+authors = ["Your Name <youremail@example.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/yourusername/pomodoro-timer"
+repository = "https://github.com/yourusername/pomodoro-timer"
+keywords = ["pomodoro", "timer", "productivity"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+# Add any additional dependencies here, e.g.:
+# requests = "^2.25.1"
+# plyer = "^2.0.0"  # For notifications
+# playsound = "^1.2.2"  # For audio playback
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

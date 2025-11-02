@@ -1,0 +1,7 @@
+# This file lists the dependencies required for the project.
+
+threading
+notify2
+playsound
+termios
+keyboard

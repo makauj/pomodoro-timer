@@ -5,13 +5,12 @@ description = "A simple terminal Pomodoro timer with keyboard controls, notifica
 authors = ["Your Name <youremail@example.com>"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/yourusername/pomodoro-timer"
-repository = "https://github.com/yourusername/pomodoro-timer"
+homepage = "https://github.com/makauj/pomodoro-timer"
+repository = "https://github.com/makauj/pomodoro-timer"
 keywords = ["pomodoro", "timer", "productivity"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-# Add any additional dependencies here, e.g.:
 # requests = "^2.25.1"
 # plyer = "^2.0.0"  # For notifications
 # playsound = "^1.2.2"  # For audio playback
